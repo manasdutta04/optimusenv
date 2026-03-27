@@ -1,0 +1,41 @@
+name: OptimusEnv
+version: "1.0.0"
+description: >
+  An OpenEnv environment where RL agents learn to optimize PyTorch model training.
+  Agents make real-time decisions about hyperparameters and architecture to maximize
+  accuracy while minimizing training time and memory usage on real datasets.
+author: "Manas"
+tasks:
+  - id: task_1
+    difficulty: easy
+    description: "Hyperparameter tuning on MNIST - reach 92% val accuracy"
+  - id: task_2
+    difficulty: medium
+    description: "Architecture search + generalization across MNIST and FashionMNIST"
+  - id: task_3
+    difficulty: hard
+    description: "Composite optimization - accuracy, speed, and memory on CIFAR-10"
+action_space:
+  learning_rate: {type: float, min: 0.00001, max: 0.1}
+  batch_size: {type: int, min: 8, max: 512}
+  weight_decay: {type: float, min: 0.0, max: 0.1}
+  optimizer: {type: categorical, values: [adam, sgd, adamw]}
+  num_layers: {type: int, min: 1, max: 5}
+  hidden_dim: {type: int, min: 32, max: 512}
+  use_amp: {type: bool}
+  lr_schedule: {type: categorical, values: [none, cosine, step]}
+observation_space:
+  epoch: {type: int}
+  train_loss: {type: float}
+  val_loss: {type: float}
+  val_accuracy: {type: float}
+  throughput_sps: {type: float}
+  mem_mb: {type: float}
+  time_elapsed_sec: {type: float}
+endpoints:
+  reset: "POST /reset"
+  step: "POST /step"
+  state: "GET /state"
+  tasks: "GET /tasks"
+  grader: "POST /grader"
+  baseline: "POST /baseline"
