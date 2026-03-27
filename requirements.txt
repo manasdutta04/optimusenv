@@ -7,3 +7,4 @@ numpy>=1.26.0
 requests>=2.31.0
 openenv-core>=0.2.0
 certifi>=2024.0.0
+openai>=1.0.0

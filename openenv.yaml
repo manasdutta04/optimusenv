@@ -1,20 +1,26 @@
+spec_version: 1
 name: OptimusEnv
+type: space
+runtime: fastapi
+app: app.main:app
+port: 7860
 version: "1.0.0"
 description: >
   An OpenEnv environment where RL agents learn to optimize PyTorch model training.
   Agents make real-time decisions about hyperparameters and architecture to maximize
   accuracy while minimizing training time and memory usage on real datasets.
+  This simulates the real-world task of ML engineer hyperparameter tuning.
 author: "Manas"
 tasks:
   - id: task_1
     difficulty: easy
-    description: "Hyperparameter tuning on MNIST - reach 92% val accuracy"
+    description: "Hyperparameter tuning on MNIST — reach 92% val accuracy"
   - id: task_2
     difficulty: medium
     description: "Architecture search + generalization across MNIST and FashionMNIST"
   - id: task_3
     difficulty: hard
-    description: "Composite optimization - accuracy, speed, and memory on CIFAR-10"
+    description: "Composite optimization — accuracy, speed, and memory on CIFAR-10"
 action_space:
   learning_rate: {type: float, min: 0.00001, max: 0.1}
   batch_size: {type: int, min: 8, max: 512}

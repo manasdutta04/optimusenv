@@ -110,7 +110,10 @@ pip install -r requirements.txt
 # Run server locally
 uvicorn app.main:app --host 0.0.0.0 --port 7860 --workers 1
 
-# Run baseline agent
+# Run LLM baseline agent (requires OPENAI_API_KEY)
+OPENAI_API_KEY=sk-... python baseline/run_baseline.py --host http://localhost:7860
+
+# Run random baseline agent (no API key needed)
 python baseline/run_baseline.py --host http://localhost:7860
 
 # Docker build + run
