@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-optimusenv"
+version = "1.0.0"
+description = "OptimusEnv OpenEnv package for PyTorch training optimization."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core[core]>=0.2.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "pydantic>=2.6.0",
+    "numpy>=1.26.0",
+    "requests>=2.31.0",
+    "certifi>=2024.2.2",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["app*", "server*"]

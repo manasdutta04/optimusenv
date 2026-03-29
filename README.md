@@ -99,25 +99,22 @@ reward       = clip(acc_reward + speed_bonus + mem_bonus, -1.0, 1.0)
 ### Local Development
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 7860 --workers 1
+uv lock
+uv run server
 ```
 
 ### Docker
 
 ```bash
-docker build -t optimusenv .
-docker run --rm -p 7860:7860 optimusenv
+docker build -t optimusenv -f server/Dockerfile .
+docker run --rm -p 8000:8000 optimusenv
 ```
 
 ### Running the Baseline Agent
 
 ```bash
-# LLM agent (recommended — uses OpenAI API):
-OPENAI_API_KEY=sk-... python baseline/run_baseline.py --host http://localhost:7860
-
-# Random agent fallback (no API key needed):
-python baseline/run_baseline.py --host http://localhost:7860
+# Random baseline against the uv/openenv entrypoint:
+python baseline/run_baseline.py --host http://localhost:8000
 ```
 
 ## API Reference
@@ -136,23 +133,23 @@ python baseline/run_baseline.py --host http://localhost:7860
 
 ```bash
 # 1. Health check
-curl http://localhost:7860/health
+curl http://localhost:8000/health
 
 # 2. List tasks
-curl http://localhost:7860/tasks
+curl http://localhost:8000/tasks
 
 # 3. Start episode
-curl -X POST http://localhost:7860/reset \
+curl -X POST http://localhost:8000/reset \
   -H "Content-Type: application/json" \
   -d '{"task":"task_1"}'
 
 # 4. Run a training step
-curl -X POST http://localhost:7860/step \
+curl -X POST http://localhost:8000/step \
   -H "Content-Type: application/json" \
   -d '{"learning_rate":0.001,"batch_size":64,"optimizer":"adamw","num_layers":2,"hidden_dim":128,"use_amp":false,"lr_schedule":"none","weight_decay":0.0001}'
 
 # 5. Repeat step until done=true, then grade
-curl -X POST http://localhost:7860/grader
+curl -X POST http://localhost:8000/grader
 ```
 
 ## Baseline Scores
@@ -167,14 +164,22 @@ curl -X POST http://localhost:7860/grader
 ## HuggingFace Spaces Deployment
 
 1. Create a new **Docker Space** on [HuggingFace](https://huggingface.co/new-space)
-2. Push this repository (with `Dockerfile`, `openenv.yaml`, and all source code)
-3. The container exposes port `7860` — HF Spaces handles routing automatically
-4. After deploy, validate with:
+2. Validate the scaffold locally:
+   ```bash
+   openenv validate .
+   uv run server
+   ```
+3. Deploy with OpenEnv:
+   ```bash
+   openenv push --repo-id YOUR_USERNAME/optimusenv
+   ```
+4. The OpenEnv scaffold serves on port `8000` and `openenv push` packages the environment for Hugging Face Spaces.
+5. After deploy, validate with:
    ```bash
    curl https://YOUR-SPACE.hf.space/health
    curl -X POST https://YOUR-SPACE.hf.space/reset -H "Content-Type: application/json" -d '{"task":"task_1"}'
    ```
-5. Tag the Space with `openenv` for discoverability
+6. Tag the Space with `openenv` for discoverability
 
 ## License
 
