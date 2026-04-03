@@ -1,3 +1,12 @@
+---
+title: OptimusEnv
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 8000
+license: apache-2.0
+---
 # OptimusEnv — PyTorch Training Optimization RL Environment
 
 **An [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-compliant environment where AI agents learn to be better ML engineers.**
