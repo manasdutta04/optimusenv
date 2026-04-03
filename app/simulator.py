@@ -23,14 +23,14 @@ class MLPClassifier(nn.Module):
             nn.Flatten(),
             nn.Linear(28 * 28, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         ]
         for _ in range(max(0, num_layers - 1)):
             layers.extend(
                 [
                     nn.Linear(hidden_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim),
-                    nn.ReLU(inplace=True),
+                    nn.ReLU(),
                 ]
             )
         layers.append(nn.Linear(hidden_dim, 10))
@@ -46,11 +46,11 @@ class SmallCIFARClassifier(nn.Module):
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
@@ -62,7 +62,7 @@ class SmallCIFARClassifier(nn.Module):
                 [
                     nn.Linear(in_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim),
-                    nn.ReLU(inplace=True),
+                    nn.ReLU(),
                 ]
             )
             in_dim = hidden_dim

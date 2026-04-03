@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import random
+import threading
+from contextlib import contextmanager
 
 import torch
 from fastapi import Body, FastAPI, HTTPException
@@ -19,6 +21,7 @@ from app.models import (
     StepResponse,
     TaskInfo,
 )
+from app.policy import heuristic_action_for_step
 from app.simulator import TrainingSimulator
 from app.tasks import TASKS
 
@@ -37,6 +40,20 @@ app.add_middleware(
 
 # Global singleton
 env = OptimusEnv()
+_env_lock = threading.Lock()
+
+
+@contextmanager
+def exclusive_env_access():
+    if not _env_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="Environment is busy with another episode. Retry after the current run finishes.",
+        )
+    try:
+        yield
+    finally:
+        _env_lock.release()
 
 
 @app.on_event("startup")
@@ -66,7 +83,8 @@ def reset(body: ResetRequest = Body(default=ResetRequest(task="task_1"))) -> Res
     if task_id not in TASKS:
         raise HTTPException(status_code=400, detail=f"Unknown task: {task_id}")
     try:
-        return env.reset(task_id)
+        with exclusive_env_access():
+            return env.reset(task_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -78,7 +96,8 @@ def step(action: Action) -> StepResponse:
     if not env.episode_active:
         raise HTTPException(status_code=400, detail="No active episode. Call /reset first.")
     try:
-        return env.step(action)
+        with exclusive_env_access():
+            return env.step(action)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -120,8 +139,9 @@ def grader() -> GraderResponse:
     if env.task_config is None:
         raise HTTPException(status_code=400, detail="No active task configuration.")
     try:
-        grader_fn = get_grader(env.task_config["grader"])
-        return grader_fn(env.episode_history, env.task_config)
+        with exclusive_env_access():
+            grader_fn = get_grader(env.task_config["grader"])
+            return grader_fn(env.episode_history, env.task_config)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -130,25 +150,35 @@ def grader() -> GraderResponse:
 def baseline() -> BaselineResponse:
     scores: dict[str, float] = {}
     try:
-        for task_id in ["task_1", "task_2", "task_3"]:
-            env.reset(task_id)
-            done = False
-            while not done:
-                action = sample_random_action()
-                resp = env.step(action)
-                done = resp.done
+        with exclusive_env_access():
+            for task_id in ["task_1", "task_2", "task_3"]:
+                reset_response = env.reset(task_id)
+                done = False
+                observation = reset_response.observation.model_dump()
+                history: list[dict[str, float | int | dict[str, Any]]] = []
+                while not done:
+                    action = heuristic_action_for_step(
+                        task_id=task_id,
+                        observation=observation,
+                        history=history,
+                        max_epochs=env.max_epochs,
+                    )
+                    resp = env.step(action)
+                    done = resp.done
+                    observation = resp.observation.model_dump()
+                    history.append(observation)
 
-            if env.task_config is None:
-                raise RuntimeError("Task config missing after episode.")
-            grader_resp = get_grader(env.task_config["grader"])(
-                env.episode_history,
-                env.task_config,
-            )
-            scores[task_id] = round(float(grader_resp.score), 4)
+                if env.task_config is None:
+                    raise RuntimeError("Task config missing after episode.")
+                grader_resp = get_grader(env.task_config["grader"])(
+                    env.episode_history,
+                    env.task_config,
+                )
+                scores[task_id] = round(float(grader_resp.score), 4)
 
-        avg = sum(scores.values()) / 3.0
-        scores["average"] = round(float(avg), 4)
-        return BaselineResponse(**scores)
+            avg = sum(scores.values()) / 3.0
+            scores["average"] = round(float(avg), 4)
+            return BaselineResponse(**scores)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

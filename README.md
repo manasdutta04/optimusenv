@@ -113,9 +113,20 @@ docker run --rm -p 8000:8000 optimusenv
 ### Running the Baseline Agent
 
 ```bash
-# Random baseline against the uv/openenv entrypoint:
+# Deterministic heuristic baseline against the uv/openenv entrypoint:
 python baseline/run_baseline.py --host http://localhost:8000
 ```
+
+### Running the Submission Inference Script
+
+```bash
+API_BASE_URL=... \
+MODEL_NAME=... \
+HF_TOKEN=... \
+python inference.py --host http://localhost:8000
+```
+
+The root [inference.py](/Users/manas/Coding Workspace/optimusenv/inference.py) script is aligned with the hackathon validator: it reads `API_BASE_URL`, `MODEL_NAME`, and `HF_TOKEN`, uses the OpenAI client for LLM calls when available, and falls back to a deterministic heuristic policy so the run still completes reproducibly.
 
 ## API Reference
 
@@ -127,7 +138,7 @@ python baseline/run_baseline.py --host http://localhost:8000
 | `GET` | `/state` | Inspect current environment state |
 | `GET` | `/tasks` | List available tasks and action schema |
 | `POST` | `/grader` | Score the completed episode (0.0–1.0) |
-| `POST` | `/baseline` | Run internal random baseline across all 3 tasks |
+| `POST` | `/baseline` | Run internal heuristic baseline across all 3 tasks |
 
 ## Example Usage
 
@@ -156,8 +167,8 @@ curl -X POST http://localhost:8000/grader
 
 | Agent | Task 1 | Task 2 | Task 3 | Average |
 |---|---:|---:|---:|---:|
-| Random (seed=42) | — | — | — | — |
-| LLM (gpt-4o-mini) | — | — | — | — |
+| Heuristic (seed=42) | — | — | — | — |
+| Hybrid LLM + heuristic | — | — | — | — |
 
 > Run `POST /baseline` or `python baseline/run_baseline.py` to generate scores on your hardware.
 
@@ -180,6 +191,17 @@ curl -X POST http://localhost:8000/grader
    curl -X POST https://YOUR-SPACE.hf.space/reset -H "Content-Type: application/json" -d '{"task":"task_1"}'
    ```
 6. Tag the Space with `openenv` for discoverability
+
+## Hackathon Submission Notes
+
+- Required root inference entrypoint: `inference.py`
+- Required environment variables: `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN`
+- Recommended pre-submit flow:
+  ```bash
+  openenv validate .
+  uv run server
+  python inference.py --host http://localhost:8000
+  ```
 
 ## License
 

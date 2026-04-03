@@ -6,14 +6,11 @@ Uses an LLM to make intelligent hyperparameter decisions based on
 training metrics feedback. Falls back to random actions if no API key.
 
 Usage:
-    # LLM agent (requires OPENAI_API_KEY env var):
-    OPENAI_API_KEY=sk-... python baseline/run_baseline.py
+    # Hackathon-style env vars:
+    API_BASE_URL=... MODEL_NAME=... HF_TOKEN=... python baseline/run_baseline.py
 
-    # Random fallback:
-    python baseline/run_baseline.py --host http://localhost:7860
-
-    # Custom model:
-    python baseline/run_baseline.py --model gpt-4o-mini
+    # Heuristic fallback:
+    python baseline/run_baseline.py --host http://localhost:8000
 """
 
 from __future__ import annotations
@@ -26,6 +23,8 @@ import time
 from typing import Any, Optional
 
 import requests
+from app.models import Action
+from app.policy import heuristic_action_for_step
 
 # ---------------------------------------------------------------------------
 # LLM Agent (OpenAI API)
@@ -71,12 +70,12 @@ def create_openai_client() -> Optional[Any]:
         # Ollama (local):
         OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 python baseline/run_baseline.py --model llama3
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return None
     try:
         from openai import OpenAI
-        base_url = os.environ.get("OPENAI_BASE_URL")
+        base_url = os.environ.get("API_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
         return OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
     except ImportError:
         print("WARNING: openai package not installed. Falling back to random agent.")
@@ -194,12 +193,14 @@ def run_task(
     history: list[dict[str, Any]] = []
 
     while not done:
+        heuristic = heuristic_action_for_step(task_id, observation, history, max_epochs)
         if client is not None:
             action = llm_pick_action(
                 client, model, task_description, observation, steps, max_epochs, history
             )
+            action = Action.model_validate({**heuristic.model_dump(), **action}).model_dump()
         else:
-            action = sample_random_action()
+            action = heuristic.model_dump()
 
         r = requests.post(f"{host}/step", json=action, timeout=60)
         r.raise_for_status()
@@ -225,9 +226,13 @@ def run_task(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="OptimusEnv baseline agent")
-    parser.add_argument("--host", default="http://localhost:7860")
+    parser.add_argument("--host", default="http://localhost:8000")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--model", default="gpt-4o-mini", help="OpenAI model to use")
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("MODEL_NAME", "gpt-4o-mini"),
+        help="OpenAI-compatible model to use",
+    )
     args = parser.parse_args()
 
     random.seed(args.seed)
