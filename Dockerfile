@@ -13,9 +13,9 @@ COPY . .
 # Create data directory for torchvision dataset caching
 RUN mkdir -p /app/data && chmod 777 /app/data
 
-EXPOSE 7860
+EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 ENV TORCHVISION_DATASETS=/app/data
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
