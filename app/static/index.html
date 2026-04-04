@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OptimusEnv - PyTorch Training Optimization RL Environment">
+    <title>OptimusEnv | Neural Optimization</title>
+    <!-- Use Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./index.css">
+</head>
+<body>
+    <div id="particle-container"></div>
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">🚀</div>
+                <h1>OptimusEnv</h1>
+            </div>
+            <div class="status-badge" id="app-status">
+                <span class="pulse-dot"></span> System Connected
+            </div>
+        </header>
+
+        <main>
+            <section class="hero">
+                <h2>AI Agents for ML Engineering</h2>
+                <p>Welcome to OptimusEnv, an OpenEnv-compliant environment where RL agents learn to formulate optimal PyTorch training strategies across scale.</p>
+                <div class="cta-buttons">
+                    <a href="/docs" class="btn btn-primary" target="_blank">View API Docs</a>
+                    <a href="https://github.com/meta-pytorch/OpenEnv" class="btn btn-secondary" target="_blank">OpenEnv Spec</a>
+                </div>
+            </section>
+
+            <section class="system-stats">
+                <div class="stat-card" style="animation-delay: 0.1s">
+                    <div class="stat-icon">🧠</div>
+                    <div class="stat-content">
+                        <h3>Environment</h3>
+                        <p id="env-name">Loading...</p>
+                    </div>
+                </div>
+                <div class="stat-card" style="animation-delay: 0.2s">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-content">
+                        <h3>Version</h3>
+                        <p id="env-version">Loading...</p>
+                    </div>
+                </div>
+                <div class="stat-card" style="animation-delay: 0.3s">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-content">
+                        <h3>API Status</h3>
+                        <p id="env-status">Loading...</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="endpoints-preview">
+                <h2>Key Endpoints</h2>
+                <div class="endpoint-grid">
+                    <div class="endpoint-box">
+                        <span class="method get">GET</span>
+                        <code>/health</code>
+                        <span class="desc">Service health and version check</span>
+                    </div>
+                    <div class="endpoint-box">
+                        <span class="method post">POST</span>
+                        <code>/reset</code>
+                        <span class="desc">Start a new episode for a task</span>
+                    </div>
+                    <div class="endpoint-box">
+                        <span class="method post">POST</span>
+                        <code>/step</code>
+                        <span class="desc">Run one training epoch with given action</span>
+                    </div>
+                    <div class="endpoint-box">
+                        <span class="method get">GET</span>
+                        <code>/state</code>
+                        <span class="desc">Inspect current environment state</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2026 OptimusEnv. Powered by FastAPI & OpenEnv.</p>
+        </footer>
+    </div>
+    
+    <script src="./index.js"></script>
+</body>
+</html>

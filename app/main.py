@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 import threading
 from contextlib import contextmanager
@@ -7,6 +8,8 @@ from contextlib import contextmanager
 import torch
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.environment import OptimusEnv
 from app.graders import get_grader
@@ -37,6 +40,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/web", StaticFiles(directory=static_dir, html=True), name="web")
+
+@app.get("/")
+def read_root():
+    return RedirectResponse(url="/web")
 
 # Global singleton
 env = OptimusEnv()
