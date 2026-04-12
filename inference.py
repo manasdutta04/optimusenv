@@ -16,13 +16,16 @@ from optimusenv import OptimusEnvAction, OptimusEnvEnv
 
 # Environment variables
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or ""
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+# Mandatory environment variables for validator proxy compliance
+# Using os.environ to ensure hard failure if validator fails to inject credentials
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
+
 # Ensure /v1 for LiteLLM proxy compatibility
-if API_BASE_URL and not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
+if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
     API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
 
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
 print(f"[DEBUG] Using API_BASE_URL: {API_BASE_URL}", flush=True)
 print(f"[DEBUG] Using IMAGE_NAME: {IMAGE_NAME}", flush=True)
