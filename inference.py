@@ -1,70 +1,93 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
-import argparse
+import asyncio
 import json
 import os
-import random
+import textwrap
 import time
-from typing import Any
+from typing import Any, List, Optional
 
 import requests
+from openai import OpenAI
 
-from app.models import Action
-from app.policy import heuristic_action_for_step
+# Environment variables as per mandatory requirements
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+HOST = os.getenv("HOST", "http://localhost:8000")
 
+SYSTEM_PROMPT = textwrap.dedent(
+    """
+    You are an expert ML engineer optimizing a real PyTorch training run.
+    Return a single JSON object matching this schema:
+    {
+      "learning_rate": float,
+      "batch_size": int,
+      "weight_decay": float,
+      "optimizer": "adam" | "sgd" | "adamw",
+      "num_layers": int,
+      "hidden_dim": int,
+      "use_amp": false,
+      "lr_schedule": "none" | "cosine" | "step"
+    }
+    Keep architecture stable after the first epoch unless the current setup is clearly failing.
+    Prefer small, sensible adjustments over drastic jumps.
+    """
+).strip()
 
-SYSTEM_PROMPT = """You are an expert ML engineer optimizing a real PyTorch training run.
-Return a single JSON object matching this schema:
-{
-  "learning_rate": float,
-  "batch_size": int,
-  "weight_decay": float,
-  "optimizer": "adam" | "sgd" | "adamw",
-  "num_layers": int,
-  "hidden_dim": int,
-  "use_amp": false,
-  "lr_schedule": "none" | "cosine" | "step"
-}
-Keep architecture stable after the first epoch unless the current setup is clearly failing.
-Prefer small, sensible adjustments over drastic jumps."""
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
-def create_openai_client() -> Any | None:
-    api_key = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
-    base_url = os.environ.get("API_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
-    if not api_key or not base_url:
-        return None
-    try:
-        from openai import OpenAI
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
-        return OpenAI(api_key=api_key, base_url=base_url)
-    except Exception:
-        return None
+class OptimusEnvWrapper:
+    def __init__(self, host: str, task_id: str):
+        self.host = host
+        self.task_id = task_id
+        self.max_epochs = 0
+        self.task_description = ""
 
+    async def reset(self):
+        resp = requests.post(f"{self.host}/reset", json={"task": self.task_id}, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        self.max_epochs = data["max_epochs"]
+        self.task_description = data["task_description"]
+        return data
 
-def call_llm_for_action(
-    client: Any,
-    model_name: str,
-    task_id: str,
-    task_description: str,
-    observation: dict[str, Any],
-    history: list[dict[str, Any]],
-    max_epochs: int,
-) -> Action | None:
-    heuristic = heuristic_action_for_step(task_id, observation, history, max_epochs)
+    async def step(self, action: dict):
+        resp = requests.post(f"{self.host}/step", json=action, timeout=120)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_score(self) -> float:
+        resp = requests.post(f"{self.host}/grader", timeout=60)
+        resp.raise_for_status()
+        return float(resp.json()["score"])
+
+    async def close(self):
+        # Optional cleanup
+        pass
+
+def get_model_action(client: OpenAI, task_description: str, observation: dict, history: list) -> dict:
     prompt = {
-        "task_id": task_id,
         "task_description": task_description,
-        "max_epochs": max_epochs,
+        "observation": observation,
         "history_tail": history[-4:],
-        "current_observation": observation,
-        "heuristic_suggestion": heuristic.model_dump(),
-        "instruction": "Return only the next action as JSON.",
+        "instruction": "Return ONLY the next action as valid JSON."
     }
     try:
-        response = client.chat.completions.create(
-            model=model_name,
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(prompt)},
@@ -72,105 +95,82 @@ def call_llm_for_action(
             temperature=0.2,
             max_tokens=250,
         )
-        content = (response.choices[0].message.content or "").strip()
+        content = (completion.choices[0].message.content or "").strip()
+        # Clean markdown code blocks if present
         if content.startswith("```"):
-            content = content.strip("`")
-            if "\n" in content:
-                content = content.split("\n", 1)[1]
-        return Action.model_validate_json(content)
-    except Exception:
-        return None
+            content = content.split("\n", 1)[-1].rsplit("\n", 1)[0].strip()
+        return json.loads(content)
+    except Exception as exc:
+        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        # Fallback to a safe default action
+        return {
+            "learning_rate": 0.001,
+            "batch_size": 64,
+            "weight_decay": 1e-4,
+            "optimizer": "adamw",
+            "num_layers": 2,
+            "hidden_dim": 128,
+            "use_amp": False,
+            "lr_schedule": "none"
+        }
 
+async def run_episode(client: OpenAI, task_id: str):
+    env = OptimusEnvWrapper(HOST, task_id)
+    history: List[str] = []
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-def should_query_llm(history: list[dict[str, Any]], max_epochs: int) -> bool:
-    if not history:
-        return True
-    if len(history) == max_epochs // 2:
-        return True
-    if len(history) < 2:
-        return False
-    latest = history[-1]
-    previous = history[-2]
-    return (
-        float(latest["val_loss"]) > float(previous["val_loss"]) * 1.04
-        and float(latest["val_accuracy"]) <= float(previous["val_accuracy"]) + 0.003
-    )
+    log_start(task=task_id, env="optimusenv", model=MODEL_NAME)
 
+    try:
+        reset_data = await env.reset()
+        observation = reset_data["observation"]
+        max_epochs = reset_data["max_epochs"]
 
-def run_task(host: str, task_id: str, client: Any | None, model_name: str) -> tuple[float, int]:
-    reset_response = requests.post(f"{host}/reset", json={"task": task_id}, timeout=60)
-    reset_response.raise_for_status()
-    reset_payload = reset_response.json()
-    task_description = reset_payload["task_description"]
-    max_epochs = int(reset_payload["max_epochs"])
-    observation = reset_payload["observation"]
-    history: list[dict[str, Any]] = []
-    done = False
-    steps = 0
+        for step in range(1, max_epochs + 1):
+            action_dict = get_model_action(client, env.task_description, observation, history)
+            
+            step_data = await env.step(action_dict)
+            observation = step_data["observation"]
+            reward = step_data.get("reward", 0.0)
+            done = step_data.get("done", False)
+            
+            rewards.append(reward)
+            steps_taken = step
+            
+            action_str = json.dumps(action_dict)
+            log_step(step=step, action=action_str, reward=reward, done=done, error=None)
+            
+            history.append(f"Step {step}: {action_str} -> reward {reward:.2f}")
+            if done:
+                break
+        
+        score = await env.get_score()
+        success = score >= 0.1  # Success threshold as per user example
+    except Exception as e:
+        print(f"[ERROR] Episode failed: {e}", flush=True)
+    finally:
+        await env.close()
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    
+    return score
 
-    while not done:
-        action = heuristic_action_for_step(task_id, observation, history, max_epochs)
-        if client is not None and should_query_llm(history, max_epochs):
-            llm_action = call_llm_for_action(
-                client=client,
-                model_name=model_name,
-                task_id=task_id,
-                task_description=task_description,
-                observation=observation,
-                history=history,
-                max_epochs=max_epochs,
-            )
-            if llm_action is not None:
-                action = llm_action
-
-        response = requests.post(
-            f"{host}/step",
-            json=action.model_dump(),
-            timeout=120,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        observation = payload["observation"]
-        history.append(observation)
-        done = bool(payload["done"])
-        steps += 1
-
-    grader_response = requests.post(f"{host}/grader", timeout=60)
-    grader_response.raise_for_status()
-    return float(grader_response.json()["score"]), steps
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Hackathon inference for OptimusEnv")
-    parser.add_argument("--host", default="http://localhost:8000")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--model", default=os.environ.get("MODEL_NAME", "gpt-4o-mini"))
-    args = parser.parse_args()
-
-    random.seed(args.seed)
-    client = create_openai_client()
-
-    print("OptimusEnv Inference")
-    print(f"Host: {args.host}")
-    print(f"Seed: {args.seed}")
-    print(f"Model: {args.model}")
-    print(f"LLM enabled: {'yes' if client is not None else 'no (heuristic fallback)'}")
-    print("-" * 40)
-
-    scores: dict[str, float] = {}
-    start = time.time()
-    for task_id in ["task_1", "task_2", "task_3"]:
-        task_start = time.time()
-        score, steps = run_task(args.host, task_id, client, args.model)
-        elapsed = time.time() - task_start
-        scores[task_id] = score
-        print(f"{task_id}: score={score:.4f} steps={steps} time={elapsed:.1f}s")
-
-    average = sum(scores.values()) / 3.0
-    total_elapsed = time.time() - start
-    print("-" * 40)
-    print(json.dumps({**scores, "average": round(average, 4), "total_time_sec": round(total_elapsed, 1)}, indent=2))
-
+async def main():
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    
+    # Run tasks sequentially
+    tasks = ["task_1", "task_2", "task_3"]
+    all_scores = []
+    
+    for task_id in tasks:
+        score = await run_episode(client, task_id)
+        all_scores.append(score)
+    
+    if all_scores:
+        avg_score = sum(all_scores) / len(all_scores)
+        print(f"\nFinal Average Score: {avg_score:.4f}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
