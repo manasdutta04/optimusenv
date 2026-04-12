@@ -13,6 +13,10 @@ from openai import OpenAI
 # Using direct os.environ access to force failure if mandatory variables are missing
 try:
     API_BASE_URL = os.environ["API_BASE_URL"]
+    # Ensure /v1 suffix for OpenAI client compatibility with proxies
+    # This is critical as many proxies listen on /v1/chat/completions
+    if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
+        API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
 except KeyError:
     print("[WARNING] API_BASE_URL missing in environment, falling back to router.", flush=True)
     API_BASE_URL = "https://router.huggingface.co/v1"
@@ -135,36 +139,33 @@ async def run_episode(client: OpenAI, task_id: str):
 
     log_start(task=task_id, env="optimusenv", model=MODEL_NAME)
 
-    try:
-        reset_data = await env.reset()
-        observation = reset_data["observation"]
-        max_epochs = reset_data["max_epochs"]
+    reset_data = await env.reset()
+    observation = reset_data["observation"]
+    max_epochs = reset_data["max_epochs"]
 
-        for step in range(1, max_epochs + 1):
-            action_dict = get_model_action(client, env.task_description, observation, history)
-            
-            step_data = await env.step(action_dict)
-            observation = step_data["observation"]
-            reward = step_data.get("reward", 0.0)
-            done = step_data.get("done", False)
-            
-            rewards.append(reward)
-            steps_taken = step
-            
-            action_str = json.dumps(action_dict)
-            log_step(step=step, action=action_str, reward=reward, done=done, error=None)
-            
-            history.append(f"Step {step}: {action_str} -> reward {reward:.2f}")
-            if done:
-                break
+    for step in range(1, max_epochs + 1):
+        action_dict = get_model_action(client, env.task_description, observation, history)
         
-        score = await env.get_score()
-        success = score >= 0.1  # Success threshold as per user example
-    except Exception as e:
-        print(f"[ERROR] Episode failed: {e}", flush=True)
-    finally:
-        await env.close()
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        step_data = await env.step(action_dict)
+        observation = step_data["observation"]
+        reward = step_data.get("reward", 0.0)
+        done = step_data.get("done", False)
+        
+        rewards.append(reward)
+        steps_taken = step
+        
+        action_str = json.dumps(action_dict)
+        log_step(step=step, action=action_str, reward=reward, done=done, error=None)
+        
+        history.append(f"Step {step}: {action_str} -> reward {reward:.2f}")
+        if done:
+            break
+    
+    score = await env.get_score()
+    success = score >= 0.1  # Success threshold as per user example
+    
+    await env.close()
+    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
     
     return score
 
