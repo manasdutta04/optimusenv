@@ -11,10 +11,22 @@ from openai import OpenAI
 
 # Environment variables as per mandatory requirements
 # Prioritize API_KEY and API_BASE_URL over fallbacks to ensure proxy compliance
-API_BASE_URL = os.environ.get("API_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "https://router.huggingface.co/v1"
+API_BASE_URL = os.environ.get("API_BASE_URL")
+if API_BASE_URL:
+    # Ensure /v1 suffix for OpenAI client compatibility with proxies
+    if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
+        API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
+else:
+    API_BASE_URL = os.environ.get("OPENAI_BASE_URL") or "https://router.huggingface.co/v1"
+
 API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
 MODEL_NAME = os.environ.get("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-HOST = os.environ.get("HOST", "http://localhost:8000")
+HOST = os.getenv("HOST", "http://localhost:8000")
+
+# Diagnostic logging to participant logs (masked)
+print(f"[DEBUG] Using API_BASE_URL: {API_BASE_URL}", flush=True)
+masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if API_KEY and len(API_KEY) > 8 else "****"
+print(f"[DEBUG] Using API_KEY: {masked_key}", flush=True)
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
