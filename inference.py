@@ -10,16 +10,22 @@ import requests
 from openai import OpenAI
 
 # Environment variables as per mandatory requirements
-# Prioritize API_KEY and API_BASE_URL over fallbacks to ensure proxy compliance
-API_BASE_URL = os.environ.get("API_BASE_URL")
-if API_BASE_URL:
+# Using direct os.environ access to force failure if mandatory variables are missing
+try:
+    API_BASE_URL = os.environ["API_BASE_URL"]
     # Ensure /v1 suffix for OpenAI client compatibility with proxies
     if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
         API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
-else:
-    API_BASE_URL = os.environ.get("OPENAI_BASE_URL") or "https://router.huggingface.co/v1"
+except KeyError:
+    print("[WARNING] API_BASE_URL missing in environment, falling back to router.", flush=True)
+    API_BASE_URL = "https://router.huggingface.co/v1"
 
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
+try:
+    API_KEY = os.environ["API_KEY"]
+except KeyError:
+    print("[WARNING] API_KEY missing in environment, falling back to HF_TOKEN.", flush=True)
+    API_KEY = os.environ.get("HF_TOKEN", "")
+
 MODEL_NAME = os.environ.get("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 HOST = os.getenv("HOST", "http://localhost:8000")
 
@@ -114,22 +120,13 @@ def get_model_action(client: OpenAI, task_description: str, observation: dict, h
             content = content.split("\n", 1)[-1].rsplit("\n", 1)[0].strip()
         return json.loads(content)
     except Exception as exc:
-        # Logging failure to stdout to help diagnose proxy/connectivity issues
+        # Logging failure to stdout and RAISING it to force a Phase 2 execution failure
+        # This prevents silent heuristic fallbacks and reveals the true error in logs.
         print(f"[ERROR] LLM Request failed: {exc}", flush=True)
         if hasattr(exc, "response"):
             print(f"[DEBUG] Response status: {exc.response.status_code}", flush=True)
-            print(f"[DEBUG] Response text: {exc.response.text}", flush=True)
-        # Fallback to a safe default action
-        return {
-            "learning_rate": 0.001,
-            "batch_size": 64,
-            "weight_decay": 1e-4,
-            "optimizer": "adamw",
-            "num_layers": 2,
-            "hidden_dim": 128,
-            "use_amp": False,
-            "lr_schedule": "none"
-        }
+            print(f"[DEBUG] Response details: {exc.response.text}", flush=True)
+        raise exc
 
 async def run_episode(client: OpenAI, task_id: str):
     env = OptimusEnvWrapper(HOST, task_id)
