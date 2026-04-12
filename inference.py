@@ -10,10 +10,11 @@ import requests
 from openai import OpenAI
 
 # Environment variables as per mandatory requirements
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-HOST = os.getenv("HOST", "http://localhost:8000")
+# Prioritize API_KEY and API_BASE_URL over fallbacks to ensure proxy compliance
+API_BASE_URL = os.environ.get("API_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "https://router.huggingface.co/v1"
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
+MODEL_NAME = os.environ.get("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+HOST = os.environ.get("HOST", "http://localhost:8000")
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -101,7 +102,11 @@ def get_model_action(client: OpenAI, task_description: str, observation: dict, h
             content = content.split("\n", 1)[-1].rsplit("\n", 1)[0].strip()
         return json.loads(content)
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        # Logging failure to stdout to help diagnose proxy/connectivity issues
+        print(f"[ERROR] LLM Request failed: {exc}", flush=True)
+        if hasattr(exc, "response"):
+            print(f"[DEBUG] Response status: {exc.response.status_code}", flush=True)
+            print(f"[DEBUG] Response text: {exc.response.text}", flush=True)
         # Fallback to a safe default action
         return {
             "learning_rate": 0.001,
