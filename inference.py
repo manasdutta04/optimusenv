@@ -4,10 +4,11 @@ import json
 import os
 import textwrap
 import time
+import traceback
 from typing import Any, List, Optional
 
 import requests
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # Environment variables as per mandatory requirements
 # Using direct os.environ access to force failure if mandatory variables are missing
@@ -98,7 +99,7 @@ class OptimusEnvWrapper:
         # Optional cleanup
         pass
 
-def get_model_action(client: OpenAI, task_description: str, observation: dict, history: list) -> dict:
+async def get_model_action(client: AsyncOpenAI, task_description: str, observation: dict, history: list) -> dict:
     prompt = {
         "task_description": task_description,
         "observation": observation,
@@ -106,7 +107,7 @@ def get_model_action(client: OpenAI, task_description: str, observation: dict, h
         "instruction": "Return ONLY the next action as valid JSON."
     }
     try:
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -121,15 +122,13 @@ def get_model_action(client: OpenAI, task_description: str, observation: dict, h
             content = content.split("\n", 1)[-1].rsplit("\n", 1)[0].strip()
         return json.loads(content)
     except Exception as exc:
-        # Logging failure to stdout and RAISING it to force a Phase 2 execution failure
-        # This prevents silent heuristic fallbacks and reveals the true error in logs.
         print(f"[ERROR] LLM Request failed: {exc}", flush=True)
         if hasattr(exc, "response"):
             print(f"[DEBUG] Response status: {exc.response.status_code}", flush=True)
             print(f"[DEBUG] Response details: {exc.response.text}", flush=True)
         raise exc
 
-async def run_episode(client: OpenAI, task_id: str):
+async def run_episode(client: AsyncOpenAI, task_id: str):
     env = OptimusEnvWrapper(HOST, task_id)
     history: List[str] = []
     rewards: List[float] = []
@@ -144,7 +143,7 @@ async def run_episode(client: OpenAI, task_id: str):
     max_epochs = reset_data["max_epochs"]
 
     for step in range(1, max_epochs + 1):
-        action_dict = get_model_action(client, env.task_description, observation, history)
+        action_dict = await get_model_action(client, env.task_description, observation, history)
         
         step_data = await env.step(action_dict)
         observation = step_data["observation"]
@@ -170,19 +169,37 @@ async def run_episode(client: OpenAI, task_id: str):
     return score
 
 async def main():
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    
-    # Run tasks sequentially
-    tasks = ["task_1", "task_2", "task_3"]
-    all_scores = []
-    
-    for task_id in tasks:
-        score = await run_episode(client, task_id)
-        all_scores.append(score)
-    
-    if all_scores:
-        avg_score = sum(all_scores) / len(all_scores)
-        print(f"\nFinal Average Score: {avg_score:.4f}")
+    try:
+        # Check environment connectivity first
+        print(f"[DEBUG] Checking connectivity to environment server at {HOST}...", flush=True)
+        try:
+            requests.get(f"{HOST}/baseline", timeout=5)
+            print("[DEBUG] Environment server reachable.", flush=True)
+        except Exception as e:
+            print(f"[WARNING] Could not reach environment server: {e}", flush=True)
+
+        async_client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        
+        # Run tasks sequentially
+        tasks = ["task_1", "task_2", "task_3"]
+        all_scores = []
+        
+        for task_id in tasks:
+            score = await run_episode(async_client, task_id)
+            all_scores.append(score)
+        
+        if all_scores:
+            avg_score = sum(all_scores) / len(all_scores)
+            print(f"\nFinal Average Score: {avg_score:.4f}")
+
+    except Exception:
+        print("\n" + "="*50)
+        print("CRITICAL ERROR: Unhandled exception in main()")
+        print("="*50)
+        traceback.print_exc()
+        print("="*50 + "\n")
+        # Exit with error to notify validator
+        os._exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
