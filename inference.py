@@ -3,6 +3,8 @@ import asyncio
 import json
 import os
 import textwrap
+import socket
+import subprocess
 import time
 import traceback
 from typing import Any, List, Optional
@@ -99,6 +101,18 @@ class OptimusEnvWrapper:
         # Optional cleanup
         pass
 
+def wait_for_server(host="localhost", port=8000, timeout=60):
+    """Block until the server is accepting connections."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, int(port)), timeout=1):
+                print(f"[INFO] Server at {host}:{port} is up.", flush=True)
+                return True
+        except OSError:
+            time.sleep(1)
+    raise RuntimeError(f"Server at {host}:{port} did not start within {timeout}s")
+
 async def get_model_action(client: AsyncOpenAI, task_description: str, observation: dict, history: list) -> dict:
     prompt = {
         "task_description": task_description,
@@ -169,8 +183,24 @@ async def run_episode(client: AsyncOpenAI, task_id: str):
     return score
 
 async def main():
+    # --- START SERVER IN BACKGROUND ---
+    # We use 0.0.0.0 to ensure it's reachable on all interfaces if needed
+    host_addr = "0.0.0.0"
+    port_num = "8000"
+    server_proc = subprocess.Popen(
+        ["uvicorn", "app.main:app", "--host", host_addr, "--port", port_num, "--workers", "1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    print(f"[INFO] Started uvicorn server process on {host_addr}:{port_num}", flush=True)
+    
     try:
-        # Check environment connectivity first
+        # Wait for the server to be ready locally
+        wait_for_server(host="localhost", port=int(port_num), timeout=60)
+
+        # Check environment connectivity to verify reset/baseline endpoints
         print(f"[DEBUG] Checking connectivity to environment server at {HOST}...", flush=True)
         try:
             requests.get(f"{HOST}/baseline", timeout=5)
@@ -200,6 +230,13 @@ async def main():
         print("="*50 + "\n")
         # Exit with error to notify validator
         os._exit(1)
+    finally:
+        print("[INFO] Terminating server process.", flush=True)
+        server_proc.terminate()
+        try:
+            server_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_proc.kill()
 
 if __name__ == "__main__":
     asyncio.run(main())
