@@ -13,9 +13,6 @@ from openai import OpenAI
 # Using direct os.environ access to force failure if mandatory variables are missing
 try:
     API_BASE_URL = os.environ["API_BASE_URL"]
-    # Ensure /v1 suffix for OpenAI client compatibility with proxies
-    if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
-        API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
 except KeyError:
     print("[WARNING] API_BASE_URL missing in environment, falling back to router.", flush=True)
     API_BASE_URL = "https://router.huggingface.co/v1"
@@ -26,7 +23,7 @@ except KeyError:
     print("[WARNING] API_KEY missing in environment, falling back to HF_TOKEN.", flush=True)
     API_KEY = os.environ.get("HF_TOKEN", "")
 
-MODEL_NAME = os.environ.get("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+MODEL_NAME = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 HOST = os.getenv("HOST", "http://localhost:8000")
 
 # Diagnostic logging to participant logs (masked)
